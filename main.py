@@ -1,20 +1,22 @@
 # main.py
 import asyncio
-import aiohttp
-import time
-import re
 import json
-from datetime import date, datetime
-from pathlib import Path
-from asyncio import StreamReader, StreamWriter, Task, Server
 import os
-from astrbot.api import logger, AstrBotConfig
-from astrbot.api.star import Context, Star, register, StarTools
-from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
+import re
+import time
+from asyncio import Server, StreamReader, StreamWriter, Task
+from datetime import date, datetime
+
+import aiohttp
+
+from astrbot.api import AstrBotConfig, logger
+from astrbot.api.event import AstrMessageEvent, MessageEventResult, filter
+from astrbot.api.star import Context, Star, StarTools, register
 
 # 导入可视化相关库，如果失败则禁用该功能
 try:
     import jinja2
+
     from .visual import render_status_card
     VISUAL_ENABLED = True
 except ImportError:
@@ -53,7 +55,7 @@ class IPProxyPlugin(Star):
         # 定义缓存目录
         self.cache_dir = self.data_dir / "cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        
+
         self.stats_file = self.data_dir / "stats.json"
         self.stats = {}
         self._load_stats_sync()
@@ -72,7 +74,7 @@ class IPProxyPlugin(Star):
         """将字节数格式化为可读的KB, MB, GB等"""
         if size < 1024:
             return f"{size} B"
-        for unit in ['KB', 'MB', 'GB', 'TB', 'PB']:
+        for unit in ["KB", "MB", "GB", "TB", "PB"]:
             size /= 1024.0
             if size < 1024.0:
                 return f"{size:.2f} {unit}"
@@ -82,7 +84,7 @@ class IPProxyPlugin(Star):
     def _parse_traffic_string(self, traffic_str: str) -> int | None:
         """解析流量字符串 (e.g., "5GB", "1000MB") 为字节数"""
         traffic_str = traffic_str.strip().upper()
-        match = re.match(r'(\d+(?:\.\d+)?)\s*(B|KB|MB|GB|TB|PB)?', traffic_str)
+        match = re.match(r"(\d+(?:\.\d+)?)\s*(B|KB|MB|GB|TB|PB)?", traffic_str)
         if not match:
             return None
 
@@ -109,7 +111,7 @@ class IPProxyPlugin(Star):
         today_str = date.today().isoformat()
         async with self.stats_lock:
             if self.stats.get("today_date") != today_str:
-                logger.info(f"日期已更新，重置每日IP与流量统计。")
+                logger.info("日期已更新，重置每日IP与流量统计。")
                 # 记录前一天的流量到历史记录
                 if self.stats.get("today_traffic_bytes") is not None:
                     if "daily_traffic_history" not in self.stats:
@@ -130,7 +132,7 @@ class IPProxyPlugin(Star):
         """同步版本的数据加载，用于 __init__"""
         try:
             if self.stats_file.exists():
-                with open(self.stats_file, 'r', encoding='utf-8') as f:
+                with open(self.stats_file, encoding="utf-8") as f:
                     self.stats = json.load(f)
                 logger.info("IP代理插件: 成功加载统计数据。")
             else:
@@ -139,15 +141,15 @@ class IPProxyPlugin(Star):
             logger.error(f"IP代理插件: 加载统计数据失败: {e}，将使用默认值。")
             self.stats = {}
 
-        self.stats.setdefault('total_ips_used', 0)
-        self.stats.setdefault('today_date', '1970-01-01')
-        self.stats.setdefault('today_ips_used', 0)
-        self.stats.setdefault('today_requests_succeeded', 0)
-        self.stats.setdefault('today_requests_failed', 0)
-        self.stats.setdefault('total_traffic_bytes', 0)
-        self.stats.setdefault('today_traffic_bytes', 0)
-        self.stats.setdefault('daily_traffic_history', [])
-        self.stats.setdefault('total_traffic_limit_bytes', 0)
+        self.stats.setdefault("total_ips_used", 0)
+        self.stats.setdefault("today_date", "1970-01-01")
+        self.stats.setdefault("today_ips_used", 0)
+        self.stats.setdefault("today_requests_succeeded", 0)
+        self.stats.setdefault("today_requests_failed", 0)
+        self.stats.setdefault("total_traffic_bytes", 0)
+        self.stats.setdefault("today_traffic_bytes", 0)
+        self.stats.setdefault("daily_traffic_history", [])
+        self.stats.setdefault("total_traffic_limit_bytes", 0)
 
     async def _save_stats(self):
         """
@@ -156,7 +158,7 @@ class IPProxyPlugin(Star):
         temp_file_path = self.stats_file.with_suffix(".json.tmp")
         try:
             # 1. 将数据写入临时文件
-            with open(temp_file_path, 'w', encoding='utf-8') as f:
+            with open(temp_file_path, "w", encoding="utf-8") as f:
                 json.dump(self.stats, f, indent=4)
             # 2. 如果写入成功，则用临时文件替换原文件
             os.replace(temp_file_path, self.stats_file)
@@ -171,17 +173,17 @@ class IPProxyPlugin(Star):
         await self._check_and_reset_daily_stats()
         async with self.stats_lock:
             if success:
-                self.stats['today_requests_succeeded'] += 1
+                self.stats["today_requests_succeeded"] += 1
             else:
-                self.stats['today_requests_failed'] += 1
+                self.stats["today_requests_failed"] += 1
             await self._save_stats()
 
     async def _increment_ip_usage_counter(self):
         """记录IP使用量，现在是异步的"""
         await self._check_and_reset_daily_stats()
         async with self.stats_lock:
-            self.stats['total_ips_used'] += 1
-            self.stats['today_ips_used'] += 1
+            self.stats["total_ips_used"] += 1
+            self.stats["today_ips_used"] += 1
             await self._save_stats()
 
     async def _forward_and_track(self, src: StreamReader, dst: StreamWriter):
@@ -196,12 +198,12 @@ class IPProxyPlugin(Star):
                 # --- 核心流量统计逻辑 ---
                 traffic_this_chunk = len(data)
                 async with self.stats_lock:
-                    self.stats['total_traffic_bytes'] += traffic_this_chunk
-                    self.stats['today_traffic_bytes'] += traffic_this_chunk
+                    self.stats["total_traffic_bytes"] += traffic_this_chunk
+                    self.stats["today_traffic_bytes"] += traffic_this_chunk
 
                     # 检查总流量限制
-                    total_limit = self.stats.get('total_traffic_limit_bytes', 0)
-                    if total_limit > 0 and self.stats['total_traffic_bytes'] >= total_limit:
+                    total_limit = self.stats.get("total_traffic_limit_bytes", 0)
+                    if total_limit > 0 and self.stats["total_traffic_bytes"] >= total_limit:
                         logger.warning(f"总流量已达到或超过限制 ({self._format_bytes(total_limit)})，将停止当前转发。")
                         break
 
@@ -215,16 +217,16 @@ class IPProxyPlugin(Star):
 
     # 重写 handle_connection，调用新的转发和统计方法
     async def handle_connection(self, reader: StreamReader, writer: StreamWriter):
-        addr = writer.get_extra_info('peername')
+        addr = writer.get_extra_info("peername")
         remote_writer: StreamWriter | None = None
         is_counted = False
 
         # 在处理新连接前检查流量限制，如果已达到限制，则拒绝连接
         async with self.stats_lock:
-            total_limit = self.stats.get('total_traffic_limit_bytes', 0)
-            if total_limit > 0 and self.stats['total_traffic_bytes'] >= total_limit:
+            total_limit = self.stats.get("total_traffic_limit_bytes", 0)
+            if total_limit > 0 and self.stats["total_traffic_bytes"] >= total_limit:
                 logger.warning(f"总流量已达到限制，拒绝新连接来自 {addr}。")
-                writer.write(b'HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n')
+                writer.write(b"HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n")
                 await writer.drain()
                 if not writer.is_closing(): writer.close()
                 return
@@ -235,15 +237,15 @@ class IPProxyPlugin(Star):
 
             allowed_domains = set(self.config.get("allowed_domains", []))
             if not allowed_domains:
-                logger.warning(f"IP代理插件: 未配置allowed_domains，拒绝所有代理请求。")
-                writer.write(b'HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
+                logger.warning("IP代理插件: 未配置allowed_domains，拒绝所有代理请求。")
+                writer.write(b"HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n")
                 await writer.drain()
                 return
 
             hostname = self._extract_hostname(initial_data)
             if not hostname or hostname not in allowed_domains:
                 logger.warning(f"IP代理插件: 拒绝来自 {addr} 的非白名单域名请求: {hostname if hostname else '未知主机'}")
-                writer.write(b'HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
+                writer.write(b"HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n")
                 await writer.drain()
                 return
 
@@ -252,7 +254,7 @@ class IPProxyPlugin(Star):
             if not remote_ip or not remote_port:
                 logger.error(f"无法为来自 {addr} 的白名单请求获取有效代理IP。")
                 await self._increment_request_counter(success=False); is_counted = True
-                writer.write(b'HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n')
+                writer.write(b"HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n")
                 await writer.drain()
                 return
 
@@ -265,14 +267,14 @@ class IPProxyPlugin(Star):
             # 将首个数据块的流量也计入统计
             traffic_initial_chunk = len(initial_data)
             async with self.stats_lock:
-                self.stats['total_traffic_bytes'] += traffic_initial_chunk
-                self.stats['today_traffic_bytes'] += traffic_initial_chunk
+                self.stats["total_traffic_bytes"] += traffic_initial_chunk
+                self.stats["today_traffic_bytes"] += traffic_initial_chunk
 
                 # 再次检查总流量限制
-                total_limit = self.stats.get('total_traffic_limit_bytes', 0)
-                if total_limit > 0 and self.stats['total_traffic_bytes'] >= total_limit:
+                total_limit = self.stats.get("total_traffic_limit_bytes", 0)
+                if total_limit > 0 and self.stats["total_traffic_bytes"] >= total_limit:
                     logger.warning(f"总流量已达到或超过限制 ({self._format_bytes(total_limit)})，关闭当前连接。")
-                    writer.write(b'HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n')
+                    writer.write(b"HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n")
                     await writer.drain()
                     if not remote_writer.is_closing(): remote_writer.close()
                     if not writer.is_closing(): writer.close()
@@ -330,14 +332,14 @@ class IPProxyPlugin(Star):
         listen_host = self.config.get("listen_host", "127.0.0.1")
         local_port = self.config.get("local_port", 8888)
         async with self.stats_lock:
-            succeeded = self.stats.get('today_requests_succeeded', 0)
-            failed = self.stats.get('today_requests_failed', 0)
-            total_ips = self.stats.get('total_ips_used', 0)
-            today_ips = self.stats.get('today_ips_used', 0)
-            total_traffic = self.stats.get('total_traffic_bytes', 0)
-            today_traffic = self.stats.get('today_traffic_bytes', 0)
-            total_traffic_limit = self.stats.get('total_traffic_limit_bytes', 0)
-            daily_traffic_history = self.stats.get('daily_traffic_history', [])
+            succeeded = self.stats.get("today_requests_succeeded", 0)
+            failed = self.stats.get("today_requests_failed", 0)
+            total_ips = self.stats.get("total_ips_used", 0)
+            today_ips = self.stats.get("today_ips_used", 0)
+            total_traffic = self.stats.get("total_traffic_bytes", 0)
+            today_traffic = self.stats.get("today_traffic_bytes", 0)
+            total_traffic_limit = self.stats.get("total_traffic_limit_bytes", 0)
+            daily_traffic_history = self.stats.get("daily_traffic_history", [])
         total_reqs = succeeded + failed
         success_rate_text = f"{(succeeded / total_reqs * 100):.2f}%" if total_reqs > 0 else "N/A"
         remaining_traffic_text = "无限制"
@@ -348,7 +350,7 @@ class IPProxyPlugin(Star):
         avg_daily_traffic = 0
         if daily_traffic_history:
             avg_daily_traffic = sum(daily_traffic_history) / len(daily_traffic_history)
-        if total_traffic_limit > 0 and avg_daily_traffic > 0 and 'remaining_bytes' in locals():
+        if total_traffic_limit > 0 and avg_daily_traffic > 0 and "remaining_bytes" in locals():
             estimated_days_text = f"{(remaining_bytes / avg_daily_traffic):.2f} 天"
 
         if not self.config.get("enable_visual_status", False):
@@ -378,7 +380,7 @@ class IPProxyPlugin(Star):
             yield event.plain_result("❌ 可视化功能未开启。缺少 jinja2 或 playwright 库，请检查安装。")
             return
 
-        
+
         #  在生成图片前执行清理
         await self._cleanup_cache_dir(max_age_seconds=600) # 10分钟
 
@@ -387,18 +389,18 @@ class IPProxyPlugin(Star):
             "listen_address": f"{listen_host}:{local_port}",
             "current_ip": ip_text,
             "used_traffic": self._format_bytes(total_traffic),
-            "total_limit": self._format_bytes(total_traffic_limit) if total_traffic_limit > 0 else '无限制',
+            "total_limit": self._format_bytes(total_traffic_limit) if total_traffic_limit > 0 else "无限制",
             "has_limit": total_traffic_limit > 0,
             "traffic_percentage": min(100, (total_traffic / total_traffic_limit) * 100) if total_traffic_limit > 0 else 0,
             "remaining_traffic": remaining_traffic_text,
             "estimated_days": estimated_days_text,
             "today_traffic": self._format_bytes(today_traffic),
-            "daily_avg_traffic": self._format_bytes(avg_daily_traffic) if daily_traffic_history else 'N/A',
+            "daily_avg_traffic": self._format_bytes(avg_daily_traffic) if daily_traffic_history else "N/A",
             "success_rate": success_rate_text,
             "today_ips": today_ips,
-            "update_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            "update_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
-        
+
         try:
             # 接收 Path 对象
             image_path = await render_status_card(render_data)
@@ -407,7 +409,7 @@ class IPProxyPlugin(Star):
         except Exception as e:
             logger.error(f"生成代理状态卡片失败: {e}", exc_info=True)
             yield event.plain_result(f"❌ 生成状态卡片时发生错误: {e}\n请确保 Playwright 已正确安装 (playwright install)。")
-            
+
     async def get_new_ip(self) -> tuple[str | None, int | None]:
         api_url = self.config.get("api_url")
         if not api_url or "YOUR_TOKEN" in api_url:
@@ -472,10 +474,10 @@ class IPProxyPlugin(Star):
 
     def _extract_hostname(self, request_data: bytes) -> str | None:
         try:
-            request_str = request_data.decode('utf-8', errors='ignore')
-            connect_match = re.search(r'CONNECT\s+([a-zA-Z0-9.-]+):\d+', request_str, re.IGNORECASE)
+            request_str = request_data.decode("utf-8", errors="ignore")
+            connect_match = re.search(r"CONNECT\s+([a-zA-Z0-9.-]+):\d+", request_str, re.IGNORECASE)
             if connect_match: return connect_match.group(1).lower()
-            host_match = re.search(r'Host:\s+([a-zA-Z0-9.-]+)', request_str, re.IGNORECASE)
+            host_match = re.search(r"Host:\s+([a-zA-Z0-9.-]+)", request_str, re.IGNORECASE)
             if host_match: return host_match.group(1).lower()
         except Exception: pass
         return None
@@ -597,7 +599,7 @@ class IPProxyPlugin(Star):
         if seconds > 0:
             return event.plain_result(f"✅ IP绝对失效时间已更新为: {seconds} 秒。")
         else:
-            return event.plain_result(f"✅ IP绝对失效时间已设置为永不强制失效。")
+            return event.plain_result("✅ IP绝对失效时间已设置为永不强制失效。")
 
     # --- [新增] 设置总流量限制命令 ---
     @filter.command("设置总流量")
@@ -605,10 +607,10 @@ class IPProxyPlugin(Star):
     async def set_total_traffic_limit(self, event: AstrMessageEvent, traffic_size: str) -> MessageEventResult:
         parsed_bytes = self._parse_traffic_string(traffic_size)
         if parsed_bytes is None:
-            return event.plain_result(f"❌ 无效的流量大小格式。请使用例如: 5GB, 1000MB, 2TB。")
+            return event.plain_result("❌ 无效的流量大小格式。请使用例如: 5GB, 1000MB, 2TB。")
 
         async with self.stats_lock:
-            self.stats['total_traffic_limit_bytes'] = parsed_bytes
+            self.stats["total_traffic_limit_bytes"] = parsed_bytes
             await self._save_stats()
 
         return event.plain_result(f"✅ 总流量限制已设定为: {self._format_bytes(parsed_bytes)}")
@@ -618,10 +620,10 @@ class IPProxyPlugin(Star):
     async def set_used_traffic(self, event: AstrMessageEvent, traffic_size: str) -> MessageEventResult:
         parsed_bytes = self._parse_traffic_string(traffic_size)
         if parsed_bytes is None:
-            return event.plain_result(f"❌ 无效的流量大小格式。请使用例如: 5GB, 1000MB, 2TB。")
+            return event.plain_result("❌ 无效的流量大小格式。请使用例如: 5GB, 1000MB, 2TB。")
 
         async with self.stats_lock:
-            self.stats['total_traffic_bytes'] = parsed_bytes
+            self.stats["total_traffic_bytes"] = parsed_bytes
             await self._save_stats()
 
         return event.plain_result(f"✅ 已使用总流量已更新为: {self._format_bytes(parsed_bytes)}")

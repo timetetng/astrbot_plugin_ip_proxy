@@ -1,6 +1,5 @@
-import asyncio
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 import jinja2
 from playwright.async_api import async_playwright
@@ -187,7 +186,7 @@ async def render_status_card(data: dict) -> Path:
         await page.set_viewport_size({"width": 640, "height": 780})
         await page.set_content(final_html)
 
-        container_element = await page.query_selector('.container')
+        container_element = await page.query_selector(".container")
         if container_element:
             await container_element.screenshot(path=str(output_path))
         else:
