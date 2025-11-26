@@ -33,7 +33,7 @@
   "validation_url": {
     "description": "用于验证代理IP有效性的URL",
     "type": "string",
-    "default": "http://www.baidu.com",
+    "default": "http://api.kurobbs.com/user/api/cookies/info",
     "hint": "插件会尝试通过代理访问此URL来判断IP是否可用。"
   },
   "validation_interval": {
