@@ -169,6 +169,7 @@ STATUS_HTML_TEMPLATE = """
 </html>
 """
 
+
 async def render_status_card(data: dict) -> Path:
     """
     使用Playwright将HTML模板渲染成图片。

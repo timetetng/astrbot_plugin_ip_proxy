@@ -15,9 +15,8 @@ from astrbot.api.star import Context, Star, StarTools, register
 
 # 导入可视化相关库，如果失败则禁用该功能
 try:
-    import jinja2
-
     from .visual import render_status_card
+
     VISUAL_ENABLED = True
 except ImportError:
     VISUAL_ENABLED = False
@@ -28,8 +27,8 @@ except ImportError:
     "astrbot_plugin_ip_proxy",
     "timetetng",
     "一个将HTTP代理API转换为本地代理的AstrBot插件 ",
-    "1.6",  # 版本号更新
-    "https://github.com/timetetng/astrbot_plugin_ip_proxy"
+    "1.6",
+    "https://github.com/timetetng/astrbot_plugin_ip_proxy",
 )
 class IPProxyPlugin(Star):
     """
@@ -38,6 +37,7 @@ class IPProxyPlugin(Star):
     用户可以通过独立的指令来控制和配置代理服务。
     所有指令均需要管理员权限。
     """
+
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         self.config: AstrBotConfig = config
@@ -63,7 +63,9 @@ class IPProxyPlugin(Star):
         logger.info("IP代理插件: 插件已加载，配置已注入。")
 
         if not VISUAL_ENABLED:
-            logger.warning("IP代理插件: jinja2 或 playwright 未安装，可视化状态卡片功能将不可用。")
+            logger.warning(
+                "IP代理插件: jinja2 或 playwright 未安装，可视化状态卡片功能将不可用。"
+            )
 
         if self.config.get("start_on_load", True):
             logger.info("IP代理插件: 根据配置，正在自动启动代理服务...")
@@ -117,7 +119,9 @@ class IPProxyPlugin(Star):
                     if "daily_traffic_history" not in self.stats:
                         self.stats["daily_traffic_history"] = []
                     # 确保历史记录不超过最近3条
-                    self.stats["daily_traffic_history"].append(self.stats["today_traffic_bytes"])
+                    self.stats["daily_traffic_history"].append(
+                        self.stats["today_traffic_bytes"]
+                    )
                     if len(self.stats["daily_traffic_history"]) > 3:
                         self.stats["daily_traffic_history"].pop(0)
 
@@ -193,7 +197,8 @@ class IPProxyPlugin(Star):
         try:
             while not src.at_eof():
                 data = await src.read(4096)
-                if not data: break
+                if not data:
+                    break
 
                 # --- 核心流量统计逻辑 ---
                 traffic_this_chunk = len(data)
@@ -203,8 +208,13 @@ class IPProxyPlugin(Star):
 
                     # 检查总流量限制
                     total_limit = self.stats.get("total_traffic_limit_bytes", 0)
-                    if total_limit > 0 and self.stats["total_traffic_bytes"] >= total_limit:
-                        logger.warning(f"总流量已达到或超过限制 ({self._format_bytes(total_limit)})，将停止当前转发。")
+                    if (
+                        total_limit > 0
+                        and self.stats["total_traffic_bytes"] >= total_limit
+                    ):
+                        logger.warning(
+                            f"总流量已达到或超过限制 ({self._format_bytes(total_limit)})，将停止当前转发。"
+                        )
                         break
 
                 dst.write(data)
@@ -226,14 +236,18 @@ class IPProxyPlugin(Star):
             total_limit = self.stats.get("total_traffic_limit_bytes", 0)
             if total_limit > 0 and self.stats["total_traffic_bytes"] >= total_limit:
                 logger.warning(f"总流量已达到限制，拒绝新连接来自 {addr}。")
-                writer.write(b"HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n")
+                writer.write(
+                    b"HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n"
+                )
                 await writer.drain()
-                if not writer.is_closing(): writer.close()
+                if not writer.is_closing():
+                    writer.close()
                 return
 
         try:
             initial_data = await asyncio.wait_for(reader.read(4096), timeout=10.0)
-            if not initial_data: return
+            if not initial_data:
+                return
 
             allowed_domains = set(self.config.get("allowed_domains", []))
             if not allowed_domains:
@@ -244,7 +258,9 @@ class IPProxyPlugin(Star):
 
             hostname = self._extract_hostname(initial_data)
             if not hostname or hostname not in allowed_domains:
-                logger.warning(f"IP代理插件: 拒绝来自 {addr} 的非白名单域名请求: {hostname if hostname else '未知主机'}")
+                logger.warning(
+                    f"IP代理插件: 拒绝来自 {addr} 的非白名单域名请求: {hostname if hostname else '未知主机'}"
+                )
                 writer.write(b"HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n")
                 await writer.drain()
                 return
@@ -253,16 +269,20 @@ class IPProxyPlugin(Star):
             remote_ip, remote_port = await self.get_valid_ip()
             if not remote_ip or not remote_port:
                 logger.error(f"无法为来自 {addr} 的白名单请求获取有效代理IP。")
-                await self._increment_request_counter(success=False); is_counted = True
+                await self._increment_request_counter(success=False)
+                is_counted = True
                 writer.write(b"HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n")
                 await writer.drain()
                 return
 
             connect_timeout = self.config.get("connect_timeout", 10)
             conn_future = asyncio.open_connection(remote_ip, remote_port)
-            remote_reader, remote_writer = await asyncio.wait_for(conn_future, timeout=connect_timeout)
+            remote_reader, remote_writer = await asyncio.wait_for(
+                conn_future, timeout=connect_timeout
+            )
 
-            await self._increment_request_counter(success=True); is_counted = True
+            await self._increment_request_counter(success=True)
+            is_counted = True
 
             # 将首个数据块的流量也计入统计
             traffic_initial_chunk = len(initial_data)
@@ -273,11 +293,17 @@ class IPProxyPlugin(Star):
                 # 再次检查总流量限制
                 total_limit = self.stats.get("total_traffic_limit_bytes", 0)
                 if total_limit > 0 and self.stats["total_traffic_bytes"] >= total_limit:
-                    logger.warning(f"总流量已达到或超过限制 ({self._format_bytes(total_limit)})，关闭当前连接。")
-                    writer.write(b"HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n")
+                    logger.warning(
+                        f"总流量已达到或超过限制 ({self._format_bytes(total_limit)})，关闭当前连接。"
+                    )
+                    writer.write(
+                        b"HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n"
+                    )
                     await writer.drain()
-                    if not remote_writer.is_closing(): remote_writer.close()
-                    if not writer.is_closing(): writer.close()
+                    if not remote_writer.is_closing():
+                        remote_writer.close()
+                    if not writer.is_closing():
+                        writer.close()
                     # 达到流量限制后不再接受新连接，但无需主动停止服务
                     return
 
@@ -287,18 +313,25 @@ class IPProxyPlugin(Star):
             task1 = asyncio.create_task(self._forward_and_track(reader, remote_writer))
             task2 = asyncio.create_task(self._forward_and_track(remote_reader, writer))
 
-            done, pending = await asyncio.wait([task1, task2], return_when=asyncio.FIRST_COMPLETED)
-            for task in pending: task.cancel()
+            done, pending = await asyncio.wait(
+                [task1, task2], return_when=asyncio.FIRST_COMPLETED
+            )
+            for task in pending:
+                task.cancel()
 
         except asyncio.TimeoutError:
             logger.debug(f"客户端 {addr} 在10秒内未发送有效请求头，连接关闭。")
-            if not is_counted: await self._increment_request_counter(success=False)
+            if not is_counted:
+                await self._increment_request_counter(success=False)
         except Exception as e:
             logger.error(f"处理连接 {addr} 时发生错误: {e!r}")
-            if not is_counted: await self._increment_request_counter(success=False)
+            if not is_counted:
+                await self._increment_request_counter(success=False)
         finally:
-            if remote_writer and not remote_writer.is_closing(): remote_writer.close()
-            if not writer.is_closing(): writer.close()
+            if remote_writer and not remote_writer.is_closing():
+                remote_writer.close()
+            if not writer.is_closing():
+                writer.close()
             async with self.stats_lock:
                 await self._save_stats()
             logger.debug(f"与 {addr} 的连接已关闭。")
@@ -320,11 +353,9 @@ class IPProxyPlugin(Star):
         except Exception as e:
             logger.error(f"清理缓存目录时发生错误: {e}")
 
-
     @filter.command("代理状态")
     @filter.permission_type(filter.PermissionType.ADMIN)
     async def status_proxy(self, event: AstrMessageEvent):
-
         await self._check_and_reset_daily_stats()
         is_running = self.server_task and not self.server_task.done()
         status_text = "✅运行中" if is_running else "❌已停止"
@@ -341,7 +372,9 @@ class IPProxyPlugin(Star):
             total_traffic_limit = self.stats.get("total_traffic_limit_bytes", 0)
             daily_traffic_history = self.stats.get("daily_traffic_history", [])
         total_reqs = succeeded + failed
-        success_rate_text = f"{(succeeded / total_reqs * 100):.2f}%" if total_reqs > 0 else "N/A"
+        success_rate_text = (
+            f"{(succeeded / total_reqs * 100):.2f}%" if total_reqs > 0 else "N/A"
+        )
         remaining_traffic_text = "无限制"
         if total_traffic_limit > 0:
             remaining_bytes = total_traffic_limit - total_traffic
@@ -350,7 +383,11 @@ class IPProxyPlugin(Star):
         avg_daily_traffic = 0
         if daily_traffic_history:
             avg_daily_traffic = sum(daily_traffic_history) / len(daily_traffic_history)
-        if total_traffic_limit > 0 and avg_daily_traffic > 0 and "remaining_bytes" in locals():
+        if (
+            total_traffic_limit > 0
+            and avg_daily_traffic > 0
+            and "remaining_bytes" in locals()
+        ):
             estimated_days_text = f"{(remaining_bytes / avg_daily_traffic):.2f} 天"
 
         if not self.config.get("enable_visual_status", False):
@@ -377,28 +414,35 @@ class IPProxyPlugin(Star):
 
         # --- 可视化卡片输出 ---
         if not VISUAL_ENABLED:
-            yield event.plain_result("❌ 可视化功能未开启。缺少 jinja2 或 playwright 库，请检查安装。")
+            yield event.plain_result(
+                "❌ 可视化功能未开启。缺少 jinja2 或 playwright 库，请检查安装。"
+            )
             return
 
-
         #  在生成图片前执行清理
-        await self._cleanup_cache_dir(max_age_seconds=600) # 10分钟
+        await self._cleanup_cache_dir(max_age_seconds=600)  # 10分钟
 
         render_data = {
             "is_running": is_running,
             "listen_address": f"{listen_host}:{local_port}",
             "current_ip": ip_text,
             "used_traffic": self._format_bytes(total_traffic),
-            "total_limit": self._format_bytes(total_traffic_limit) if total_traffic_limit > 0 else "无限制",
+            "total_limit": self._format_bytes(total_traffic_limit)
+            if total_traffic_limit > 0
+            else "无限制",
             "has_limit": total_traffic_limit > 0,
-            "traffic_percentage": min(100, (total_traffic / total_traffic_limit) * 100) if total_traffic_limit > 0 else 0,
+            "traffic_percentage": min(100, (total_traffic / total_traffic_limit) * 100)
+            if total_traffic_limit > 0
+            else 0,
             "remaining_traffic": remaining_traffic_text,
             "estimated_days": estimated_days_text,
             "today_traffic": self._format_bytes(today_traffic),
-            "daily_avg_traffic": self._format_bytes(avg_daily_traffic) if daily_traffic_history else "N/A",
+            "daily_avg_traffic": self._format_bytes(avg_daily_traffic)
+            if daily_traffic_history
+            else "N/A",
             "success_rate": success_rate_text,
             "today_ips": today_ips,
-            "update_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "update_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         }
 
         try:
@@ -408,7 +452,9 @@ class IPProxyPlugin(Star):
             yield event.image_result(str(image_path))
         except Exception as e:
             logger.error(f"生成代理状态卡片失败: {e}", exc_info=True)
-            yield event.plain_result(f"❌ 生成状态卡片时发生错误: {e}\n请确保 Playwright 已正确安装 (playwright install)。")
+            yield event.plain_result(
+                f"❌ 生成状态卡片时发生错误: {e}\n请确保 Playwright 已正确安装 (playwright install)。"
+            )
 
     async def get_new_ip(self) -> tuple[str | None, int | None]:
         api_url = self.config.get("api_url")
@@ -416,7 +462,8 @@ class IPProxyPlugin(Star):
             logger.warning("IP代理插件: API URL 未配置，无法获取新IP。")
             return None, None
         try:
-            if self.http_session.closed: self.http_session = aiohttp.ClientSession()
+            if self.http_session.closed:
+                self.http_session = aiohttp.ClientSession()
             async with self.http_session.get(api_url) as response:
                 response.raise_for_status()
                 ip_port = (await response.text()).strip()
@@ -425,7 +472,9 @@ class IPProxyPlugin(Star):
                     port = int(port_str)
                     await self._increment_ip_usage_counter()
                     async with self.stats_lock:
-                        logger.info(f"IP代理插件: 获取到新IP: {ip}:{port}。今日已使用: {self.stats['today_ips_used']}个, 总计: {self.stats['total_ips_used']}个")
+                        logger.info(
+                            f"IP代理插件: 获取到新IP: {ip}:{port}。今日已使用: {self.stats['today_ips_used']}个, 总计: {self.stats['total_ips_used']}个"
+                        )
                     return ip, port
                 else:
                     logger.warning(f"IP代理插件: API返回格式错误: {ip_port}")
@@ -450,9 +499,12 @@ class IPProxyPlugin(Star):
         if not self.server_task or self.server_task.done():
             return event.plain_result("代理服务未在运行。")
         self.server_task.cancel()
-        try: await self.server_task
-        except asyncio.CancelledError: pass
-        self.server_task = None; self.server = None
+        try:
+            await self.server_task
+        except asyncio.CancelledError:
+            pass
+        self.server_task = None
+        self.server = None
         return event.plain_result("代理服务已停止。")
 
     @filter.command("切换IP")
@@ -470,25 +522,39 @@ class IPProxyPlugin(Star):
         if new_ip and new_port:
             yield event.plain_result(f"✅ IP切换成功！\n新代理IP: {new_ip}:{new_port}")
         else:
-            yield event.plain_result("❌ IP切换失败！无法获取到有效的代理IP，请检查API或网络。")
+            yield event.plain_result(
+                "❌ IP切换失败！无法获取到有效的代理IP，请检查API或网络。"
+            )
 
     def _extract_hostname(self, request_data: bytes) -> str | None:
         try:
             request_str = request_data.decode("utf-8", errors="ignore")
-            connect_match = re.search(r"CONNECT\s+([a-zA-Z0-9.-]+):\d+", request_str, re.IGNORECASE)
-            if connect_match: return connect_match.group(1).lower()
-            host_match = re.search(r"Host:\s+([a-zA-Z0-9.-]+)", request_str, re.IGNORECASE)
-            if host_match: return host_match.group(1).lower()
-        except Exception: pass
+            connect_match = re.search(
+                r"CONNECT\s+([a-zA-Z0-9.-]+):\d+", request_str, re.IGNORECASE
+            )
+            if connect_match:
+                return connect_match.group(1).lower()
+            host_match = re.search(
+                r"Host:\s+([a-zA-Z0-9.-]+)", request_str, re.IGNORECASE
+            )
+            if host_match:
+                return host_match.group(1).lower()
+        except Exception:
+            pass
         return None
 
     async def is_ip_valid(self, ip: str, port: int) -> bool:
         validation_url = self.config.get("validation_url", "http://www.baidu.com")
-        timeout_config = aiohttp.ClientTimeout(total=self.config.get("validation_timeout", 5))
+        timeout_config = aiohttp.ClientTimeout(
+            total=self.config.get("validation_timeout", 5)
+        )
         proxy_url = f"http://{ip}:{port}"
         try:
-            if self.http_session.closed: self.http_session = aiohttp.ClientSession()
-            async with self.http_session.get(validation_url, proxy=proxy_url, timeout=timeout_config) as response:
+            if self.http_session.closed:
+                self.http_session = aiohttp.ClientSession()
+            async with self.http_session.get(
+                validation_url, proxy=proxy_url, timeout=timeout_config
+            ) as response:
                 if response.status == 200:
                     logger.info(f"IP {ip}:{port} 验证成功。")
                     return True
@@ -503,20 +569,30 @@ class IPProxyPlugin(Star):
             if self.current_ip and self.current_port and self.last_validation_time:
                 ip_age = time.time() - self.last_validation_time
                 if ip_expiration_time > 0 and ip_age > ip_expiration_time:
-                    logger.info(f"IP {self.current_ip}:{self.current_port} 已使用超过 {ip_expiration_time} 秒，强制获取新IP。")
+                    logger.info(
+                        f"IP {self.current_ip}:{self.current_port} 已使用超过 {ip_expiration_time} 秒，强制获取新IP。"
+                    )
                     self.current_ip = None
                     self.current_port = None
                 elif ip_age < validation_interval:
-                    logger.debug(f"使用缓存中的IP: {self.current_ip}:{self.current_port} (验证间隔内)")
+                    logger.debug(
+                        f"使用缓存中的IP: {self.current_ip}:{self.current_port} (验证间隔内)"
+                    )
                     return self.current_ip, self.current_port
                 else:
-                    logger.debug(f"IP {self.current_ip}:{self.current_port} 需重新验证...")
+                    logger.debug(
+                        f"IP {self.current_ip}:{self.current_port} 需重新验证..."
+                    )
                     if await self.is_ip_valid(self.current_ip, self.current_port):
                         self.last_validation_time = time.time()
-                        logger.debug(f"IP {self.current_ip}:{self.current_port} 验证成功，继续使用。")
+                        logger.debug(
+                            f"IP {self.current_ip}:{self.current_port} 验证成功，继续使用。"
+                        )
                         return self.current_ip, self.current_port
                     else:
-                        logger.info(f"IP {self.current_ip}:{self.current_port} 重新验证失败，获取新IP。")
+                        logger.info(
+                            f"IP {self.current_ip}:{self.current_port} 重新验证失败，获取新IP。"
+                        )
                         self.current_ip = None
 
             if not self.current_ip:
@@ -540,60 +616,78 @@ class IPProxyPlugin(Star):
         listen_host = self.config.get("listen_host", "127.0.0.1")
         local_port = self.config.get("local_port", 8888)
         try:
-            self.server = await asyncio.start_server(self.handle_connection, listen_host, local_port)
+            self.server = await asyncio.start_server(
+                self.handle_connection, listen_host, local_port
+            )
             logger.info(f"本地代理服务器已启动，监听地址: {listen_host}:{local_port}")
             await self.server.serve_forever()
         except asyncio.CancelledError:
             logger.info("本地代理服务器任务被取消。")
         except Exception as e:
-            logger.error(f"启动本地代理服务器失败: {e}，请检查端口是否被占用或配置是否正确。")
+            logger.error(
+                f"启动本地代理服务器失败: {e}，请检查端口是否被占用或配置是否正确。"
+            )
         finally:
             if self.server and self.server.is_serving():
-                self.server.close(); await self.server.wait_closed()
+                self.server.close()
+                await self.server.wait_closed()
             logger.info("本地代理服务器已关闭。")
-            self.server = None; self.server_task = None
+            self.server = None
+            self.server_task = None
 
     async def terminate(self):
         logger.info("IP代理插件正在终止...")
         if self.server_task and not self.server_task.done():
             self.server_task.cancel()
-            try: await self.server_task
-            except asyncio.CancelledError: pass
+            try:
+                await self.server_task
+            except asyncio.CancelledError:
+                pass
         if self.http_session and not self.http_session.closed:
             await self.http_session.close()
         logger.info("IP代理插件已终止。")
 
     @filter.command("修改代理API")
     @filter.permission_type(filter.PermissionType.ADMIN)
-    async def set_api_url(self, event: AstrMessageEvent, api_url: str) -> MessageEventResult:
+    async def set_api_url(
+        self, event: AstrMessageEvent, api_url: str
+    ) -> MessageEventResult:
         self.config["api_url"] = api_url
         self.config.save_config()
         return event.plain_result(f"✅ 代理API地址已更新为: {api_url}")
 
     @filter.command("修改监听地址")
     @filter.permission_type(filter.PermissionType.ADMIN)
-    async def set_listen_host(self, event: AstrMessageEvent, host: str) -> MessageEventResult:
+    async def set_listen_host(
+        self, event: AstrMessageEvent, host: str
+    ) -> MessageEventResult:
         self.config["listen_host"] = host
         self.config.save_config()
         return event.plain_result(f"✅ 监听地址已更新为: {host}\n重启代理后生效。")
 
     @filter.command("修改监听端口")
     @filter.permission_type(filter.PermissionType.ADMIN)
-    async def set_listen_port(self, event: AstrMessageEvent, port: int) -> MessageEventResult:
+    async def set_listen_port(
+        self, event: AstrMessageEvent, port: int
+    ) -> MessageEventResult:
         self.config["local_port"] = port
         self.config.save_config()
         return event.plain_result(f"✅ 监听端口已更新为: {port}\n重启代理后生效。")
 
     @filter.command("修改测试url")
     @filter.permission_type(filter.PermissionType.ADMIN)
-    async def set_validation_url(self, event: AstrMessageEvent, url: str) -> MessageEventResult:
+    async def set_validation_url(
+        self, event: AstrMessageEvent, url: str
+    ) -> MessageEventResult:
         self.config["validation_url"] = url
         self.config.save_config()
         return event.plain_result(f"✅ 验证URL已更新为: {url}")
 
     @filter.command("修改IP失效时间")
     @filter.permission_type(filter.PermissionType.ADMIN)
-    async def set_ip_expiration_time(self, event: AstrMessageEvent, seconds: int) -> MessageEventResult:
+    async def set_ip_expiration_time(
+        self, event: AstrMessageEvent, seconds: int
+    ) -> MessageEventResult:
         self.config["ip_expiration_time"] = seconds
         self.config.save_config()
         if seconds > 0:
@@ -601,29 +695,40 @@ class IPProxyPlugin(Star):
         else:
             return event.plain_result("✅ IP绝对失效时间已设置为永不强制失效。")
 
-    # --- [新增] 设置总流量限制命令 ---
     @filter.command("设置总流量")
     @filter.permission_type(filter.PermissionType.ADMIN)
-    async def set_total_traffic_limit(self, event: AstrMessageEvent, traffic_size: str) -> MessageEventResult:
+    async def set_total_traffic_limit(
+        self, event: AstrMessageEvent, traffic_size: str
+    ) -> MessageEventResult:
         parsed_bytes = self._parse_traffic_string(traffic_size)
         if parsed_bytes is None:
-            return event.plain_result("❌ 无效的流量大小格式。请使用例如: 5GB, 1000MB, 2TB。")
+            return event.plain_result(
+                "❌ 无效的流量大小格式。请使用例如: 5GB, 1000MB, 2TB。"
+            )
 
         async with self.stats_lock:
             self.stats["total_traffic_limit_bytes"] = parsed_bytes
             await self._save_stats()
 
-        return event.plain_result(f"✅ 总流量限制已设定为: {self._format_bytes(parsed_bytes)}")
+        return event.plain_result(
+            f"✅ 总流量限制已设定为: {self._format_bytes(parsed_bytes)}"
+        )
 
     @filter.command("设置已使用流量")
     @filter.permission_type(filter.PermissionType.ADMIN)
-    async def set_used_traffic(self, event: AstrMessageEvent, traffic_size: str) -> MessageEventResult:
+    async def set_used_traffic(
+        self, event: AstrMessageEvent, traffic_size: str
+    ) -> MessageEventResult:
         parsed_bytes = self._parse_traffic_string(traffic_size)
         if parsed_bytes is None:
-            return event.plain_result("❌ 无效的流量大小格式。请使用例如: 5GB, 1000MB, 2TB。")
+            return event.plain_result(
+                "❌ 无效的流量大小格式。请使用例如: 5GB, 1000MB, 2TB。"
+            )
 
         async with self.stats_lock:
             self.stats["total_traffic_bytes"] = parsed_bytes
             await self._save_stats()
 
-        return event.plain_result(f"✅ 已使用总流量已更新为: {self._format_bytes(parsed_bytes)}")
+        return event.plain_result(
+            f"✅ 已使用总流量已更新为: {self._format_bytes(parsed_bytes)}"
+        )
